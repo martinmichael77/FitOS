@@ -1,0 +1,32 @@
+
+INSERT INTO public.exercises (name, category, equipment)
+VALUES
+    ('Barbell Bench Press', 'chest', 'barbell'),
+    ('Incline Dumbbell Press', 'chest', 'dumbbells'),
+    ('Chest Fly', 'chest', 'machine'),
+    ('Push-Up', 'chest', 'bodyweight'),
+    ('Lat Pulldown', 'back', 'cable'),
+    ('Chest-Supported Row', 'back', 'machine'),
+    ('Seated Cable Row', 'back', 'cable'),
+    ('Pull-Up', 'back', 'bodyweight'),
+    ('Barbell Overhead Press', 'shoulders', 'barbell'),
+    ('Dumbbell Lateral Raise', 'shoulders', 'dumbbells'),
+    ('Reverse Pec Deck', 'shoulders', 'machine'),
+    ('Barbell Curl', 'biceps', 'barbell'),
+    ('Hammer Curl', 'biceps', 'dumbbells'),
+    ('Triceps Pushdown', 'triceps', 'cable'),
+    ('Skull Crusher', 'triceps', 'barbell'),
+    ('Leg Press', 'legs', 'machine'),
+    ('Leg Extension', 'legs', 'machine'),
+    ('Leg Curl', 'legs', 'machine'),
+    ('Romanian Deadlift', 'legs', 'barbell'),
+    ('Standing Calf Raise', 'legs', 'machine'),
+    ('Hip Abduction', 'legs', 'machine'),
+    ('Hip Adduction', 'legs', 'machine'),
+    ('Back Extension', 'back', 'bodyweight'),
+    ('Cable Crunch', 'core', 'cable'),
+    ('Plank', 'core', 'bodyweight'),
+    ('Treadmill Run', 'cardio', 'treadmill'),
+    ('Stationary Bike', 'cardio', 'machine'),
+    ('Bodyweight Squat', 'legs', 'bodyweight')
+ON CONFLICT (name, category) DO NOTHING;
