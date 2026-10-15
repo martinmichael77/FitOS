@@ -94,6 +94,12 @@ async function DashboardContent() {
                 action: "Open exercise library",
               },
               {
+                title: "Workout templates",
+                description: "Create and manage reusable strength routines.",
+                href: "/workout-templates",
+                action: "Manage templates",
+              },
+              {
                 title: "Running",
                 description: "Record distance, duration and pace.",
                 href: null,
