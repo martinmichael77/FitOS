@@ -89,34 +89,46 @@ async function DashboardContent() {
             {[
               {
                 title: "Strength training",
-                description: "Log exercises, sets, reps and weights.",
+                description: "Browse exercises and prepare for your workout templates.",
+                href: "/exercises",
+                action: "Open exercise library",
               },
               {
                 title: "Running",
                 description: "Record distance, duration and pace.",
+                href: null,
+                action: "Coming soon",
               },
               {
                 title: "Training planner",
                 description: "Organize your upcoming workouts and runs.",
+                href: null,
+                action: "Coming soon",
               },
               {
                 title: "Progress",
                 description: "Review your training history and trends.",
+                href: null,
+                action: "Coming soon",
               },
             ].map((item) => (
               <article
                 key={item.title}
                 className="rounded-xl border border-slate-800 bg-slate-900 p-6"
               >
-                <h2 className="text-xl font-semibold">
-                  {item.title}
-                </h2>
-                <p className="mt-2 leading-6 text-slate-400">
-                  {item.description}
-                </p>
-                <p className="mt-4 text-xs text-slate-500">
-                  Coming in a future development phase
-                </p>
+                <h2 className="text-xl font-semibold">{item.title}</h2>
+                <p className="mt-2 leading-6 text-slate-400">{item.description}</p>
+
+                {item.href ? (
+                  <Link
+                    href={item.href}
+                    className="mt-5 inline-flex rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300"
+                  >
+                    {item.action}
+                  </Link>
+                ) : (
+                  <p className="mt-5 text-xs text-slate-500">{item.action}</p>
+                )}
               </article>
             ))}
           </div>
