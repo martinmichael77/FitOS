@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { startWorkout } from "@/app/workout-sessions/actions";
 import { createClient } from "@/lib/supabase/server";
 import { createWorkoutTemplate } from "./actions";
 
@@ -222,6 +223,20 @@ async function WorkoutTemplatesContent({
                       >
                         Edit exercises
                       </Link>
+
+                      <form action={startWorkout} className="mt-3">
+                        <input
+                          type="hidden"
+                          name="templateId"
+                          value={template.id}
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300"
+                        >
+                          Start workout
+                        </button>
+                      </form>
                     </article>
                   ))}
                 </div>
