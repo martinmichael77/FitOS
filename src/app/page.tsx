@@ -28,9 +28,10 @@ export default function Home() {
             FitOS<span className="text-emerald-400">.</span>
           </Link>
 
-          <span className="rounded-full border border-slate-700 px-3 py-1 text-sm text-slate-300">
-            Personal fitness
-          </span>
+      <a href="/login"
+        className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800">
+        Sign in
+      </a>
         </header>
 
         <section className="py-20 sm:py-28">
