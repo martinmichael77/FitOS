@@ -1,6 +1,7 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { login } from "./actions";
@@ -46,6 +47,8 @@ function LoginFallback() {
 async function LoginContent({
   searchParams,
 }: LoginPageProps) {
+  await connection();
+
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
 
