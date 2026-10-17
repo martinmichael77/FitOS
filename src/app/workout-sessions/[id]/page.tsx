@@ -2,10 +2,31 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import {
+  finishWorkout,
+  saveWorkoutSet,
+} from "@/app/workout-sessions/actions";
 import { createClient } from "@/lib/supabase/server";
 
 type WorkoutSessionPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{
+    saved?: string;
+    error?: string;
+    completed?: string;
+  }>;
+};
+
+type WorkoutSet = {
+  id: string;
+  session_exercise_id: string;
+  set_number: number;
+  reps: number | null;
+  weight_kg: number | null;
+  is_warmup: boolean;
+  is_completed: boolean;
+  rpe: number | null;
+  notes: string | null;
 };
 
 const isUuid = (value: string) =>
@@ -15,10 +36,11 @@ const isUuid = (value: string) =>
 
 export default function WorkoutSessionPage({
   params,
+  searchParams,
 }: WorkoutSessionPageProps) {
   return (
     <Suspense fallback={<WorkoutSessionFallback />}>
-      <WorkoutSessionContent params={params} />
+      <WorkoutSessionContent params={params} searchParams={searchParams} />
     </Suspense>
   );
 }
@@ -53,10 +75,12 @@ function WorkoutSessionFallback() {
 
 async function WorkoutSessionContent({
   params,
+  searchParams,
 }: WorkoutSessionPageProps) {
   await connection();
 
   const { id } = await params;
+  const query = await searchParams;
 
   if (!isUuid(id)) {
     notFound();
@@ -103,6 +127,29 @@ async function WorkoutSessionContent({
     throw new Error("Unable to load workout exercises.");
   }
 
+  let allSets: WorkoutSet[] = [];
+
+  if (exercises.length > 0) {
+    const { data: rawSets, error: setsError } = await supabase
+      .from("workout_sets")
+      .select(
+        "id, session_exercise_id, set_number, reps, weight_kg, is_warmup, is_completed, rpe, notes",
+      )
+      .eq("user_id", userId)
+      .in(
+        "session_exercise_id",
+        exercises.map((exercise) => exercise.id),
+      )
+      .order("set_number", { ascending: true });
+
+    if (setsError) {
+      console.error("Failed to load workout sets:", setsError);
+      throw new Error("Unable to load saved sets.");
+    }
+
+    allSets = (rawSets ?? []) as WorkoutSet[];
+  }
+
   const formatRepRange = (min: number | null, max: number | null) => {
     if (min !== null && max !== null) {
       return min === max ? `${min}` : `${min}–${max}`;
@@ -112,6 +159,13 @@ async function WorkoutSessionContent({
     if (max !== null) return `Up to ${max}`;
 
     return "Not set";
+  };
+
+  const errorMessages: Record<string, string> = {
+    "invalid-set": "Check your set values and try again.",
+    "missing-set-data": "Enter reps and weight before completing a set.",
+    save: "We couldn't save your set. Please try again.",
+    "session-closed": "This workout is no longer editable.",
   };
 
   return (
@@ -156,6 +210,18 @@ async function WorkoutSessionContent({
           )}
         </section>
 
+        {query.saved === "1" && (
+          <p className="rounded-lg border border-emerald-800 bg-emerald-950 p-3 text-sm text-emerald-300">
+            Set saved successfully.
+          </p>
+        )}
+
+        {query.error && (
+          <p className="rounded-lg border border-red-800 bg-red-950 p-3 text-sm text-red-300">
+            {errorMessages[query.error] ?? "Something went wrong."}
+          </p>
+        )}
+
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Exercises</h2>
@@ -174,61 +240,234 @@ async function WorkoutSessionContent({
             </div>
           ) : (
             <div className="space-y-4">
-              {exercises.map((exercise, index) => (
-                <article
-                  key={exercise.id}
-                  className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-800 font-semibold text-emerald-400">
-                      {index + 1}
-                    </div>
+              {exercises.map((exercise, index) => {
+                const targetSets = Math.min(
+                  Math.max(exercise.target_sets ?? 1, 1),
+                  30,
+                );
 
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-lg font-semibold">
-                        {exercise.exercise_name}
-                      </h3>
+                const exerciseSets = allSets.filter(
+                  (set) => set.session_exercise_id === exercise.id,
+                );
 
-                      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        <div className="rounded-lg bg-slate-950 p-3">
-                          <p className="text-xs text-slate-400">Target sets</p>
-                          <p className="mt-1 font-semibold">
-                            {exercise.target_sets ?? "—"}
-                          </p>
-                        </div>
+                const completedCount = exerciseSets.filter(
+                  (set) => set.is_completed,
+                ).length;
 
-                        <div className="rounded-lg bg-slate-950 p-3">
-                          <p className="text-xs text-slate-400">Rep range</p>
-                          <p className="mt-1 font-semibold">
-                            {formatRepRange(
-                              exercise.target_reps_min,
-                              exercise.target_reps_max,
-                            )}
-                          </p>
-                        </div>
+                const setNumbers = Array.from(
+                  { length: targetSets },
+                  (_, setIndex) => setIndex + 1,
+                );
 
-                        <div className="rounded-lg bg-slate-950 p-3">
-                          <p className="text-xs text-slate-400">Target weight</p>
-                          <p className="mt-1 font-semibold">
-                            {exercise.target_weight_kg !== null
-                              ? `${exercise.target_weight_kg} kg`
-                              : "Not set"}
-                          </p>
-                        </div>
+                const numbersToShow = [
+                  ...setNumbers,
+                  ...exerciseSets
+                    .map((set) => set.set_number)
+                    .filter((number) => !setNumbers.includes(number)),
+                ];
+
+                return (
+                  <article
+                    key={exercise.id}
+                    className="space-y-5 rounded-2xl border border-slate-800 bg-slate-900 p-5"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-800 font-semibold text-emerald-400">
+                        {index + 1}
                       </div>
-
-                      {exercise.notes && (
-                        <p className="mt-3 text-sm text-slate-400">
-                          {exercise.notes}
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold">
+                          {exercise.exercise_name}
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-400">
+                          Target: {exercise.target_sets ?? "—"} sets ·{" "}
+                          {formatRepRange(
+                            exercise.target_reps_min,
+                            exercise.target_reps_max,
+                          )}{" "}
+                          reps ·{" "}
+                          {exercise.target_weight_kg !== null
+                            ? `${exercise.target_weight_kg} kg`
+                            : "Weight not set"}
                         </p>
-                      )}
+                        <p className="mt-1 text-xs text-slate-500">
+                          {completedCount} of {exerciseSets.length} saved sets
+                          completed
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+
+                    {numbersToShow.map((setNumber) => {
+                      const savedSet = exerciseSets.find(
+                        (set) => set.set_number === setNumber,
+                      );
+
+                      return (
+                        <form
+                          key={setNumber}
+                          action={saveWorkoutSet}
+                          className="space-y-3 rounded-xl border border-slate-800 bg-slate-950 p-4"
+                        >
+                          <input
+                            type="hidden"
+                            name="sessionId"
+                            value={session.id}
+                          />
+                          <input
+                            type="hidden"
+                            name="sessionExerciseId"
+                            value={exercise.id}
+                          />
+                          <input
+                            type="hidden"
+                            name="setNumber"
+                            value={setNumber}
+                          />
+
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">Set {setNumber}</span>
+                            {savedSet?.is_completed && (
+                              <span className="text-xs text-emerald-400">
+                                Completed
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            <label className="space-y-1 text-xs text-slate-400">
+                              Reps
+                              <input
+                                name="reps"
+                                type="number"
+                                min="1"
+                                max="1000"
+                                step="1"
+                                defaultValue={savedSet?.reps ?? ""}
+                                placeholder={
+                                  exercise.target_reps_min?.toString() ?? "0"
+                                }
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
+                              />
+                            </label>
+
+                            <label className="space-y-1 text-xs text-slate-400">
+                              Weight (kg)
+                              <input
+                                name="weightKg"
+                                type="number"
+                                min="0"
+                                max="10000"
+                                step="0.25"
+                                defaultValue={
+                                  savedSet?.weight_kg ??
+                                  exercise.target_weight_kg ??
+                                  ""
+                                }
+                                placeholder="0"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
+                              />
+                            </label>
+
+                            <label className="space-y-1 text-xs text-slate-400">
+                              RPE (optional)
+                              <input
+                                name="rpe"
+                                type="number"
+                                min="1"
+                                max="10"
+                                step="0.5"
+                                defaultValue={savedSet?.rpe ?? ""}
+                                placeholder="1–10"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
+                              />
+                            </label>
+
+                            <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-300">
+                              <input
+                                type="checkbox"
+                                name="isWarmup"
+                                defaultChecked={savedSet?.is_warmup ?? false}
+                                className="h-4 w-4 accent-emerald-400"
+                              />
+                              Warm-up
+                            </label>
+                          </div>
+
+                          <label className="block space-y-1 text-xs text-slate-400">
+                            Notes (optional)
+                            <input
+                              name="notes"
+                              type="text"
+                              maxLength={1000}
+                              defaultValue={savedSet?.notes ?? ""}
+                              placeholder="How did the set feel?"
+                              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                            />
+                          </label>
+
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <label className="flex items-center gap-2 text-sm text-slate-300">
+                              <input
+                                type="checkbox"
+                                name="isCompleted"
+                                defaultChecked={
+                                  savedSet?.is_completed ?? false
+                                }
+                                className="h-4 w-4 accent-emerald-400"
+                              />
+                              Set completed
+                            </label>
+
+                            <button
+                              type="submit"
+                              disabled={session.status !== "in_progress"}
+                              className="rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Save set
+                            </button>
+                          </div>
+                        </form>
+                      );
+                    })}
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
+
+        {query.completed === "1" && (
+          <p className="rounded-lg border border-emerald-800 bg-emerald-950 p-3 text-sm text-emerald-300">
+            Workout completed successfully!
+          </p>
+        )}
+
+        {session.status === "in_progress" && (
+          <form
+            action={finishWorkout}
+            className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
+          >
+            <input
+              type="hidden"
+              name="sessionId"
+              value={session.id}
+            />
+
+            <h2 className="text-lg font-semibold">Finish workout</h2>
+
+            <p className="mt-2 text-sm text-slate-400">
+              Finish this session when you&apos;re done training. Any incomplete
+              sets will remain saved as incomplete.
+            </p>
+
+            <button
+              type="submit"
+              className="mt-4 w-full rounded-lg bg-emerald-400 px-4 py-3 font-semibold text-slate-950 hover:bg-emerald-300"
+            >
+              Finish workout
+            </button>
+          </form>
+        )}
 
         <footer className="border-t border-slate-800 pt-5">
           <Link
