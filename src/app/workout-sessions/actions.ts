@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -406,4 +407,137 @@ export async function finishWorkout(formData: FormData) {
   }
 
   redirect(`/workout-sessions/${sessionId}?completed=1`);
+}
+
+export async function deleteWorkout(formData: FormData) {
+  const sessionId = formData.get("sessionId");
+
+  if (typeof sessionId !== "string" || !isUuid(sessionId)) {
+    redirect("/workout-history?error=delete_failed");
+  }
+
+  const supabase = await createClient();
+
+  const { data: auth, error: authError } =
+    await supabase.auth.getClaims();
+
+  const userId = auth?.claims?.sub;
+
+  if (authError || typeof userId !== "string") {
+    redirect("/login");
+  }
+
+  const { data: deletedSession, error } = await supabase
+    .from("workout_sessions")
+    .delete()
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !deletedSession) {
+    console.error("Could not delete workout:", error?.message);
+    redirect("/workout-history?error=delete_failed");
+  }
+
+  revalidatePath("/workout-history");
+  revalidatePath("/planner");
+  revalidatePath("/dashboard");
+  revalidatePath("/progress");
+
+  redirect("/workout-history");
+}
+
+export async function deleteWorkoutSet(formData: FormData) {
+  const setId = formData.get("setId");
+  const sessionId = formData.get("sessionId");
+
+  if (
+    typeof setId !== "string" ||
+    !isUuid(setId) ||
+    typeof sessionId !== "string" ||
+    !isUuid(sessionId)
+  ) {
+    redirect("/dashboard");
+  }
+
+  const supabase = await createClient();
+
+  const { data: auth, error: authError } =
+    await supabase.auth.getClaims();
+
+  const userId = auth?.claims?.sub;
+
+  if (authError || typeof userId !== "string") {
+    redirect("/login");
+  }
+
+  const { data: session, error: sessionError } = await supabase
+    .from("workout_sessions")
+    .select("id, status")
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (sessionError || !session) {
+    redirect("/dashboard");
+  }
+
+  if (session.status !== "in_progress") {
+    redirect(`/workout-sessions/${sessionId}?error=session-closed`);
+  }
+
+  const { data: exercise, error: exerciseError } = await supabase
+    .from("session_exercises")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (exerciseError || !exercise) {
+    redirect(`/workout-sessions/${sessionId}?error=delete-set`);
+  }
+
+  const { data: set, error: setError } = await supabase
+    .from("workout_sets")
+    .select("id, session_exercise_id")
+    .eq("id", setId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (setError || !set) {
+    redirect(`/workout-sessions/${sessionId}?error=delete-set`);
+  }
+
+  const { data: matchingExercise, error: matchingExerciseError } =
+    await supabase
+      .from("session_exercises")
+      .select("id")
+      .eq("id", set.session_exercise_id)
+      .eq("session_id", sessionId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+  if (matchingExerciseError || !matchingExercise) {
+    redirect(`/workout-sessions/${sessionId}?error=delete-set`);
+  }
+
+  const { data: deletedSet, error: deleteError } = await supabase
+    .from("workout_sets")
+    .delete()
+    .eq("id", setId)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+
+  if (deleteError || !deletedSet) {
+    redirect(`/workout-sessions/${sessionId}?error=delete-set`);
+  }
+
+  revalidatePath(`/workout-sessions/${sessionId}`);
+  revalidatePath("/workout-history");
+  revalidatePath("/progress");
+  revalidatePath("/dashboard");
+
+  redirect(`/workout-sessions/${sessionId}?deletedSet=1`);
 }

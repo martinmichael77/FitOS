@@ -125,8 +125,8 @@ async function DashboardContent() {
               {
                 title: "Progress",
                 description: "Review your training history and trends.",
-                href: null,
-                action: "Coming soon",
+                href: "/progress",
+                action: "View progress",
               },
             ].map((item) => (
               <article

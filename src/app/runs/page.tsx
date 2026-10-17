@@ -3,8 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import ConfirmDeleteForm from "@/components/ConfirmDeleteForm";
 import { createClient } from "@/lib/supabase/server";
-import { createRun } from "./actions";
+import { createRun, deleteRun } from "./actions";
 
 type Run = {
   id: string;
@@ -25,6 +26,7 @@ type PlannedRun = {
 
 type SearchParams = Promise<{
   saved?: string;
+  deleted?: string;
   error?: string;
   plannedActivityId?: string;
   linked?: string;
@@ -74,6 +76,7 @@ const errorMessages: Record<string, string> = {
   save_failed: "The run could not be saved. Please try again.",
   invalid_activity: "This planned run is no longer available. Please check your Planner.",
   link_failed: "Your run was saved, but the planned activity could not be linked. Please check your Planner.",
+  delete_failed: "The run could not be deleted. Please try again.",
 };
 
 export default function RunsPage({
@@ -194,6 +197,15 @@ async function RunsContent({ searchParams }: RunsPageProps) {
           {params.linked === "1"
             ? "Run saved successfully and linked to your planned activity!"
             : "Run saved successfully."}
+        </p>
+      )}
+
+      {params.deleted === "1" && (
+        <p
+          role="status"
+          className="rounded-lg border border-green-300 bg-green-50 p-3 text-green-800"
+        >
+          Run deleted successfully.
         </p>
       )}
 
@@ -412,6 +424,16 @@ async function RunsContent({ searchParams }: RunsPageProps) {
                     {run.notes}
                   </p>
                 )}
+
+                <div className="mt-4 flex justify-end">
+                  <ConfirmDeleteForm
+                    action={deleteRun}
+                    fieldName="runId"
+                    fieldValue={run.id}
+                    confirmationMessage="Delete this run permanently? Any linked planner entry will be preserved."
+                    buttonLabel="Delete run"
+                  />
+                </div>
               </article>
             ))}
           </div>

@@ -155,3 +155,45 @@ export async function createRun(formData: FormData) {
       : "/runs?saved=1",
   );
 }
+
+export async function deleteRun(formData: FormData) {
+  const supabase = await createClient();
+
+  const { data: auth, error: authError } =
+    await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+
+  if (authError || typeof userId !== "string") {
+    redirect("/login");
+  }
+
+  const runId = String(formData.get("runId") ?? "").trim();
+
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      runId,
+    )
+  ) {
+    redirect("/runs?error=delete_failed");
+  }
+
+  const { data: deletedRun, error } = await supabase
+    .from("runs")
+    .delete()
+    .eq("id", runId)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !deletedRun) {
+    console.error("Failed to delete run:", error?.message);
+    redirect("/runs?error=delete_failed");
+  }
+
+  revalidatePath("/runs");
+  revalidatePath("/planner");
+  revalidatePath("/dashboard");
+  revalidatePath("/progress");
+
+  redirect("/runs?deleted=1");
+}

@@ -3,13 +3,18 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import ConfirmDeleteForm from "@/components/ConfirmDeleteForm";
 import { startWorkout } from "@/app/workout-sessions/actions";
 import { createClient } from "@/lib/supabase/server";
-import { createWorkoutTemplate } from "./actions";
+import {
+  createWorkoutTemplate,
+  deleteWorkoutTemplate,
+} from "./actions";
 
 type PageProps = {
   searchParams: Promise<{
     created?: string;
+    deleted?: string;
     error?: string;
   }>;
 };
@@ -114,6 +119,15 @@ async function WorkoutTemplatesContent({
             </p>
           )}
 
+          {params.deleted === "1" && (
+            <p
+              role="status"
+              className="mt-6 rounded-lg border border-emerald-900 bg-emerald-950/40 p-4 text-sm text-emerald-300"
+            >
+              Workout template deleted. Your logged workout history is preserved.
+            </p>
+          )}
+
           {params.error && (
             <p
               role="alert"
@@ -121,7 +135,9 @@ async function WorkoutTemplatesContent({
             >
               {params.error === "invalid"
                 ? "Enter a valid name (up to 100 characters) and description (up to 1,000 characters)."
-                : "The template could not be created. Please try again."}
+                : params.error === "delete_failed"
+                  ? "The template could not be deleted. Please try again."
+                  : "The template could not be created. Please try again."}
             </p>
           )}
 
@@ -237,6 +253,16 @@ async function WorkoutTemplatesContent({
                           Start workout
                         </button>
                       </form>
+
+                      <div className="mt-4 flex justify-end">
+                        <ConfirmDeleteForm
+                          action={deleteWorkoutTemplate}
+                          fieldName="templateId"
+                          fieldValue={template.id}
+                          confirmationMessage={`Delete the "${template.name}" template? Its saved exercise setup will be removed, but logged workout history will be preserved.`}
+                          buttonLabel="Delete template"
+                        />
+                      </div>
                     </article>
                   ))}
                 </div>

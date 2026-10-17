@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import ConfirmDeleteForm from "@/components/ConfirmDeleteForm";
+import { deleteWorkout } from "@/app/workout-sessions/actions";
 import { createClient } from "@/lib/supabase/server";
 
 export default function WorkoutHistoryPage() {
@@ -196,6 +198,13 @@ async function WorkoutHistoryContent() {
                     >
                       View
                     </Link>
+                    <ConfirmDeleteForm
+                      action={deleteWorkout}
+                      fieldName="sessionId"
+                      fieldValue={session.id}
+                      confirmationMessage={`Permanently delete "${session.name}" and all its recorded sets? Any linked planner entry will be preserved.`}
+                      buttonLabel="Delete workout"
+                    />
                   </div>
                 </div>
               </article>

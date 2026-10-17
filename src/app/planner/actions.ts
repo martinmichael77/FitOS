@@ -198,3 +198,44 @@ export async function updatePlannedActivityStatus(
   revalidatePath("/dashboard");
   redirect("/planner?saved=1");
 }
+
+export async function deletePlannedActivity(formData: FormData) {
+  const activityId = String(formData.get("activityId") ?? "");
+
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      activityId,
+    )
+  ) {
+    redirect("/planner?error=delete_failed");
+  }
+
+  const supabase = await createClient();
+
+  const { data: auth, error: authError } =
+    await supabase.auth.getClaims();
+
+  const userId = auth?.claims?.sub;
+
+  if (authError || typeof userId !== "string") {
+    redirect("/login");
+  }
+
+  const { data: deletedActivity, error } = await supabase
+    .from("planned_activities")
+    .delete()
+    .eq("id", activityId)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !deletedActivity) {
+    console.error("Could not delete planned activity:", error?.message);
+    redirect("/planner?error=delete_failed");
+  }
+
+  revalidatePath("/planner");
+  revalidatePath("/dashboard");
+
+  redirect("/planner?saved=1");
+}

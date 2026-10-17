@@ -3,11 +3,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import ConfirmDeleteForm from "@/components/ConfirmDeleteForm";
 import { createClient } from "@/lib/supabase/server";
 import { startWorkout } from "@/app/workout-sessions/actions";
 import {
   createPlannedActivity,
   updatePlannedActivityStatus,
+  deletePlannedActivity,
 } from "./actions";
 
 type Template = {
@@ -47,6 +49,7 @@ const errorMessages: Record<string, string> = {
   save_failed: "Could not schedule the activity. Please try again.",
   invalid_update: "The requested status update is invalid.",
   update_failed: "Could not update this activity. Please try again.",
+  delete_failed: "Could not delete this planned activity. Please try again.",
 };
 
 function formatDate(date: string) {
@@ -454,6 +457,16 @@ async function PlannerContent({ searchParams }: PlannerPageProps) {
                     </form>
                   </div>
                 )}
+
+                <div className="mt-4 flex justify-end">
+                  <ConfirmDeleteForm
+                    action={deletePlannedActivity}
+                    fieldName="activityId"
+                    fieldValue={activity.id}
+                    confirmationMessage={`Delete "${activity.title}" from your planner? Any linked workout or run will be preserved.`}
+                    buttonLabel="Delete activity"
+                  />
+                </div>
               </article>
             ))}
           </div>

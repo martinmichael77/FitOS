@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import ConfirmDeleteForm from "@/components/ConfirmDeleteForm";
 import {
+  deleteWorkoutSet,
   finishWorkout,
   saveWorkoutSet,
 } from "@/app/workout-sessions/actions";
@@ -14,6 +16,7 @@ type WorkoutSessionPageProps = {
     saved?: string;
     error?: string;
     completed?: string;
+    deletedSet?: string;
   }>;
 };
 
@@ -164,6 +167,7 @@ async function WorkoutSessionContent({
   const errorMessages: Record<string, string> = {
     "invalid-set": "Check your set values and try again.",
     "missing-set-data": "Enter reps and weight before completing a set.",
+    "delete-set": "The set could not be deleted. Please try again.",
     save: "We couldn't save your set. Please try again.",
     "session-closed": "This workout is no longer editable.",
   };
@@ -213,6 +217,15 @@ async function WorkoutSessionContent({
         {query.saved === "1" && (
           <p className="rounded-lg border border-emerald-800 bg-emerald-950 p-3 text-sm text-emerald-300">
             Set saved successfully.
+          </p>
+        )}
+
+        {query.deletedSet === "1" && (
+          <p
+            role="status"
+            className="rounded-lg border border-emerald-800 bg-emerald-950 p-3 text-sm text-emerald-300"
+          >
+            Set deleted successfully.
           </p>
         )}
 
@@ -303,130 +316,153 @@ async function WorkoutSessionContent({
                       );
 
                       return (
-                        <form
+                        <div
                           key={setNumber}
-                          action={saveWorkoutSet}
                           className="space-y-3 rounded-xl border border-slate-800 bg-slate-950 p-4"
                         >
-                          <input
-                            type="hidden"
-                            name="sessionId"
-                            value={session.id}
-                          />
-                          <input
-                            type="hidden"
-                            name="sessionExerciseId"
-                            value={exercise.id}
-                          />
-                          <input
-                            type="hidden"
-                            name="setNumber"
-                            value={setNumber}
-                          />
-
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">Set {setNumber}</span>
-                            {savedSet?.is_completed && (
-                              <span className="text-xs text-emerald-400">
-                                Completed
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                            <label className="space-y-1 text-xs text-slate-400">
-                              Reps
-                              <input
-                                name="reps"
-                                type="number"
-                                min="1"
-                                max="1000"
-                                step="1"
-                                defaultValue={savedSet?.reps ?? ""}
-                                placeholder={
-                                  exercise.target_reps_min?.toString() ?? "0"
-                                }
-                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
-                              />
-                            </label>
-
-                            <label className="space-y-1 text-xs text-slate-400">
-                              Weight (kg)
-                              <input
-                                name="weightKg"
-                                type="number"
-                                min="0"
-                                max="10000"
-                                step="0.25"
-                                defaultValue={
-                                  savedSet?.weight_kg ??
-                                  exercise.target_weight_kg ??
-                                  ""
-                                }
-                                placeholder="0"
-                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
-                              />
-                            </label>
-
-                            <label className="space-y-1 text-xs text-slate-400">
-                              RPE (optional)
-                              <input
-                                name="rpe"
-                                type="number"
-                                min="1"
-                                max="10"
-                                step="0.5"
-                                defaultValue={savedSet?.rpe ?? ""}
-                                placeholder="1–10"
-                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
-                              />
-                            </label>
-
-                            <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-300">
-                              <input
-                                type="checkbox"
-                                name="isWarmup"
-                                defaultChecked={savedSet?.is_warmup ?? false}
-                                className="h-4 w-4 accent-emerald-400"
-                              />
-                              Warm-up
-                            </label>
-                          </div>
-
-                          <label className="block space-y-1 text-xs text-slate-400">
-                            Notes (optional)
+                          <form action={saveWorkoutSet} className="space-y-3">
                             <input
-                              name="notes"
-                              type="text"
-                              maxLength={1000}
-                              defaultValue={savedSet?.notes ?? ""}
-                              placeholder="How did the set feel?"
-                              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                              type="hidden"
+                              name="sessionId"
+                              value={session.id}
                             />
-                          </label>
+                            <input
+                              type="hidden"
+                              name="sessionExerciseId"
+                              value={exercise.id}
+                            />
+                            <input
+                              type="hidden"
+                              name="setNumber"
+                              value={setNumber}
+                            />
 
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <label className="flex items-center gap-2 text-sm text-slate-300">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">
+                                Set {setNumber}
+                              </span>
+                              {savedSet?.is_completed && (
+                                <span className="text-xs text-emerald-400">
+                                  Completed
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                              <label className="space-y-1 text-xs text-slate-400">
+                                Reps
+                                <input
+                                  name="reps"
+                                  type="number"
+                                  min="1"
+                                  max="1000"
+                                  step="1"
+                                  defaultValue={savedSet?.reps ?? ""}
+                                  placeholder={
+                                    exercise.target_reps_min?.toString() ?? "0"
+                                  }
+                                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
+                                />
+                              </label>
+
+                              <label className="space-y-1 text-xs text-slate-400">
+                                Weight (kg)
+                                <input
+                                  name="weightKg"
+                                  type="number"
+                                  min="0"
+                                  max="10000"
+                                  step="0.25"
+                                  defaultValue={
+                                    savedSet?.weight_kg ??
+                                    exercise.target_weight_kg ??
+                                    ""
+                                  }
+                                  placeholder="0"
+                                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
+                                />
+                              </label>
+
+                              <label className="space-y-1 text-xs text-slate-400">
+                                RPE (optional)
+                                <input
+                                  name="rpe"
+                                  type="number"
+                                  min="1"
+                                  max="10"
+                                  step="0.5"
+                                  defaultValue={savedSet?.rpe ?? ""}
+                                  placeholder="1–10"
+                                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white"
+                                />
+                              </label>
+
+                              <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-300">
+                                <input
+                                  type="checkbox"
+                                  name="isWarmup"
+                                  defaultChecked={savedSet?.is_warmup ?? false}
+                                  className="h-4 w-4 accent-emerald-400"
+                                />
+                                Warm-up
+                              </label>
+                            </div>
+
+                            <label className="block space-y-1 text-xs text-slate-400">
+                              Notes (optional)
                               <input
-                                type="checkbox"
-                                name="isCompleted"
-                                defaultChecked={
-                                  savedSet?.is_completed ?? false
-                                }
-                                className="h-4 w-4 accent-emerald-400"
+                                name="notes"
+                                type="text"
+                                maxLength={1000}
+                                defaultValue={savedSet?.notes ?? ""}
+                                placeholder="How did the set feel?"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
                               />
-                              Set completed
                             </label>
 
-                            <button
-                              type="submit"
-                              disabled={session.status !== "in_progress"}
-                              className="rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Save set
-                            </button>
-                          </div>
-                        </form>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <label className="flex items-center gap-2 text-sm text-slate-300">
+                                <input
+                                  type="checkbox"
+                                  name="isCompleted"
+                                  defaultChecked={
+                                    savedSet?.is_completed ?? false
+                                  }
+                                  className="h-4 w-4 accent-emerald-400"
+                                />
+                                Set completed
+                              </label>
+
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="submit"
+                                  disabled={session.status !== "in_progress"}
+                                  className="rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  Save set
+                                </button>
+                              </div>
+                            </div>
+                          </form>
+
+                          {savedSet && session.status === "in_progress" && (
+                            <div className="flex justify-end">
+                              <ConfirmDeleteForm
+                                action={deleteWorkoutSet}
+                                fieldName="setId"
+                                fieldValue={savedSet.id}
+                                confirmationMessage={`Delete Set ${setNumber} for ${exercise.exercise_name}? This cannot be undone.`}
+                                buttonLabel="Delete set"
+                              >
+                                <input
+                                  type="hidden"
+                                  name="sessionId"
+                                  value={session.id}
+                                />
+                              </ConfirmDeleteForm>
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </article>
