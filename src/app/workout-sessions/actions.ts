@@ -10,6 +10,7 @@ const isUuid = (value: string) =>
 
 export async function startWorkout(formData: FormData) {
   const templateId = formData.get("templateId");
+  const plannedActivityId = formData.get("plannedActivityId");
 
   if (typeof templateId !== "string" || !isUuid(templateId)) {
     redirect("/workout-templates?error=invalid");
@@ -36,6 +37,38 @@ export async function startWorkout(formData: FormData) {
 
   if (templateError || !template) {
     redirect("/workout-templates?error=notfound");
+  }
+
+  let verifiedPlannedActivityId: string | null = null;
+
+  if (plannedActivityId !== null) {
+    if (
+      typeof plannedActivityId !== "string" ||
+      !isUuid(plannedActivityId)
+    ) {
+      redirect("/planner?error=invalid_update");
+    }
+
+    const { data: plannedActivity, error: plannedActivityError } =
+      await supabase
+        .from("planned_activities")
+        .select("id, template_id, status, linked_session_id")
+        .eq("id", plannedActivityId)
+        .eq("user_id", userId)
+        .eq("activity_type", "strength")
+        .maybeSingle();
+
+    if (
+      plannedActivityError ||
+      !plannedActivity ||
+      plannedActivity.status !== "planned" ||
+      plannedActivity.linked_session_id !== null ||
+      plannedActivity.template_id !== templateId
+    ) {
+      redirect("/planner?error=invalid_update");
+    }
+
+    verifiedPlannedActivityId = plannedActivity.id;
   }
 
   const { data: plannedExercises, error: exercisesError } = await supabase
@@ -119,6 +152,38 @@ export async function startWorkout(formData: FormData) {
       .eq("user_id", userId);
 
     redirect(`/workout-templates/${templateId}?error=save`);
+  }
+
+  if (verifiedPlannedActivityId) {
+    const { data: linkedActivity, error: linkError } = await supabase
+      .from("planned_activities")
+      .update({
+        linked_session_id: session.id,
+      })
+      .eq("id", verifiedPlannedActivityId)
+      .eq("user_id", userId)
+      .eq("status", "planned")
+      .is("linked_session_id", null)
+      .select("id")
+      .maybeSingle();
+
+    if (linkError || !linkedActivity) {
+      console.error("Could not link planned workout:", linkError);
+
+      await supabase
+        .from("session_exercises")
+        .delete()
+        .eq("session_id", session.id)
+        .eq("user_id", userId);
+
+      await supabase
+        .from("workout_sessions")
+        .delete()
+        .eq("id", session.id)
+        .eq("user_id", userId);
+
+      redirect("/planner?error=update_failed");
+    }
   }
 
   redirect(`/workout-sessions/${session.id}`);
@@ -321,6 +386,23 @@ export async function finishWorkout(formData: FormData) {
 
   if (!updatedSession) {
     redirect(`/workout-sessions/${sessionId}?error=session-closed`);
+  }
+
+  const { error: plannedActivityError } = await supabase
+    .from("planned_activities")
+    .update({
+      status: "completed",
+    })
+    .eq("linked_session_id", sessionId)
+    .eq("user_id", userId)
+    .eq("activity_type", "strength")
+    .eq("status", "planned");
+
+  if (plannedActivityError) {
+    console.error(
+      "Workout finished, but its planned activity could not be updated:",
+      plannedActivityError,
+    );
   }
 
   redirect(`/workout-sessions/${sessionId}?completed=1`);

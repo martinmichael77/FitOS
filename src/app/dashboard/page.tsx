@@ -111,14 +111,16 @@ async function DashboardContent() {
               {
                 title: "Running",
                 description: "Record distance, duration and pace.",
-                href: null,
-                action: "Coming soon",
+                href: "/runs",
+                action: "Log a run",
+                actionClassName: "mt-4 inline-flex rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400",
               },
               {
                 title: "Training planner",
                 description: "Organize your upcoming workouts and runs.",
-                href: null,
-                action: "Coming soon",
+                href: "/planner",
+                action: "Open planner",
+                actionClassName: "mt-4 inline-flex rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400",
               },
               {
                 title: "Progress",
@@ -137,7 +139,11 @@ async function DashboardContent() {
                 {item.href ? (
                   <Link
                     href={item.href}
-                    className="mt-5 inline-flex rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300"
+                    className={
+                      "actionClassName" in item
+                        ? item.actionClassName
+                        : "mt-5 inline-flex rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300"
+                    }
                   >
                     {item.action}
                   </Link>

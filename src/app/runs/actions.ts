@@ -21,6 +21,9 @@ export async function createRun(formData: FormData) {
   const durationMinutes = Number(formData.get("durationMinutes"));
   const runType = String(formData.get("runType") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
+  const plannedActivityId = String(
+    formData.get("plannedActivityId") ?? "",
+  ).trim();
 
   const allowedRunTypes = [
     "easy",
@@ -64,24 +67,91 @@ export async function createRun(formData: FormData) {
     redirect("/runs?error=invalid_notes");
   }
 
+  let verifiedPlannedActivityId: string | null = null;
+
+  if (plannedActivityId) {
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    if (!isUuid.test(plannedActivityId)) {
+      redirect("/runs?error=invalid_activity");
+    }
+
+    const { data: activity, error: activityError } = await supabase
+      .from("planned_activities")
+      .select("id, status, linked_run_id")
+      .eq("id", plannedActivityId)
+      .eq("user_id", userId)
+      .eq("activity_type", "run")
+      .maybeSingle();
+
+    if (
+      activityError ||
+      !activity ||
+      activity.status !== "planned" ||
+      activity.linked_run_id !== null
+    ) {
+      redirect("/runs?error=invalid_activity");
+    }
+
+    verifiedPlannedActivityId = activity.id;
+  }
+
   const distanceM = Math.round(distanceKm * 1000);
   const durationSeconds = Math.round(durationMinutes * 60);
 
-  const { error } = await supabase.from("runs").insert({
-    user_id: userId,
-    started_at: `${date}T12:00:00.000Z`,
-    distance_m: distanceM,
-    duration_seconds: durationSeconds,
-    run_type: runType,
-    notes: notes || null,
-  });
+  const { data: savedRun, error: saveError } = await supabase
+    .from("runs")
+    .insert({
+      user_id: userId,
+      started_at: `${date}T12:00:00.000Z`,
+      distance_m: distanceM,
+      duration_seconds: durationSeconds,
+      run_type: runType,
+      notes: notes || null,
+    })
+    .select("id")
+    .single();
 
-  if (error) {
-    console.error("Failed to save run:", error.message);
+  if (saveError || !savedRun) {
+    console.error("Failed to save run:", saveError?.message);
     redirect("/runs?error=save_failed");
   }
 
+  if (verifiedPlannedActivityId) {
+    const { data: linkedActivity, error: linkError } = await supabase
+      .from("planned_activities")
+      .update({
+        linked_run_id: savedRun.id,
+        status: "completed",
+      })
+      .eq("id", verifiedPlannedActivityId)
+      .eq("user_id", userId)
+      .eq("activity_type", "run")
+      .eq("status", "planned")
+      .is("linked_run_id", null)
+      .select("id")
+      .maybeSingle();
+
+    if (linkError || !linkedActivity) {
+      console.error(
+        "Run saved, but planned activity linking failed:",
+        linkError,
+      );
+
+      revalidatePath("/runs");
+      revalidatePath("/planner");
+      redirect("/runs?error=link_failed");
+    }
+  }
+
   revalidatePath("/runs");
+  revalidatePath("/planner");
   revalidatePath("/dashboard");
-  redirect("/runs?saved=1");
+
+  redirect(
+    verifiedPlannedActivityId
+      ? "/runs?saved=1&linked=1"
+      : "/runs?saved=1",
+  );
 }

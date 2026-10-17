@@ -15,9 +15,19 @@ type Run = {
   notes: string | null;
 };
 
+type PlannedRun = {
+  id: string;
+  title: string;
+  scheduled_for: string;
+  target_distance_m: number | null;
+  target_duration_seconds: number | null;
+};
+
 type SearchParams = Promise<{
   saved?: string;
   error?: string;
+  plannedActivityId?: string;
+  linked?: string;
 }>;
 
 type RunsPageProps = {
@@ -62,6 +72,8 @@ const errorMessages: Record<string, string> = {
   invalid_type: "Please select a valid run type.",
   invalid_notes: "Notes must be 1,000 characters or fewer.",
   save_failed: "The run could not be saved. Please try again.",
+  invalid_activity: "This planned run is no longer available. Please check your Planner.",
+  link_failed: "Your run was saved, but the planned activity could not be linked. Please check your Planner.",
 };
 
 export default function RunsPage({
@@ -107,6 +119,28 @@ async function RunsContent({ searchParams }: RunsPageProps) {
 
   if (authError || typeof userId !== "string") {
     redirect("/login");
+  }
+
+  let plannedRun: PlannedRun | null = null;
+
+  if (params.plannedActivityId) {
+    const { data: activity, error: activityError } = await supabase
+      .from("planned_activities")
+      .select(
+        "id, title, scheduled_for, target_distance_m, target_duration_seconds",
+      )
+      .eq("id", params.plannedActivityId)
+      .eq("user_id", userId)
+      .eq("activity_type", "run")
+      .eq("status", "planned")
+      .is("linked_run_id", null)
+      .maybeSingle();
+
+    if (activityError) {
+      console.error("Failed to load planned run:", activityError);
+    } else if (activity) {
+      plannedRun = activity as PlannedRun;
+    }
   }
 
   const { data, error } = await supabase
@@ -157,7 +191,9 @@ async function RunsContent({ searchParams }: RunsPageProps) {
           role="status"
           className="rounded-lg border border-green-300 bg-green-50 p-3 text-green-800"
         >
-          Run saved successfully.
+          {params.linked === "1"
+            ? "Run saved successfully and linked to your planned activity!"
+            : "Run saved successfully."}
         </p>
       )}
 
@@ -206,15 +242,41 @@ async function RunsContent({ searchParams }: RunsPageProps) {
         </p>
 
         <form action={createRun} className="mt-5 space-y-4">
+          {plannedRun && (
+            <>
+              <input
+                type="hidden"
+                name="plannedActivityId"
+                value={plannedRun.id}
+              />
+
+              <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-emerald-900">
+                <p className="font-semibold">
+                  Planned run: {plannedRun.title}
+                </p>
+                <p className="mt-1 text-sm">
+                  Your saved run will be linked to this activity.
+                </p>
+              </div>
+            </>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium">
               Run date
               <input
                 type="date"
                 name="startedDate"
-                defaultValue={new Date().toLocaleDateString("en-CA", {
-                  timeZone: "Asia/Kolkata",
-                })}
+                defaultValue={
+                  plannedRun
+                    ? new Date(plannedRun.scheduled_for).toLocaleDateString(
+                        "en-CA",
+                        { timeZone: "Asia/Kolkata" },
+                      )
+                    : new Date().toLocaleDateString("en-CA", {
+                        timeZone: "Asia/Kolkata",
+                      })
+                }
                 required
                 className="mt-1 block w-full rounded-lg border p-3"
               />
@@ -246,6 +308,11 @@ async function RunsContent({ searchParams }: RunsPageProps) {
                 min="0.01"
                 max="500"
                 step="0.01"
+                defaultValue={
+                  plannedRun?.target_distance_m != null
+                    ? (plannedRun.target_distance_m / 1000).toString()
+                    : ""
+                }
                 placeholder="e.g. 5.00"
                 required
                 className="mt-1 block w-full rounded-lg border p-3"
@@ -259,6 +326,11 @@ async function RunsContent({ searchParams }: RunsPageProps) {
                 name="durationMinutes"
                 min="0.01"
                 step="0.01"
+                defaultValue={
+                  plannedRun?.target_duration_seconds != null
+                    ? (plannedRun.target_duration_seconds / 60).toString()
+                    : ""
+                }
                 placeholder="e.g. 30"
                 required
                 className="mt-1 block w-full rounded-lg border p-3"

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { startWorkout } from "@/app/workout-sessions/actions";
 import {
   createPlannedActivity,
   updatePlannedActivityStatus,
@@ -383,6 +384,37 @@ async function PlannerContent({ searchParams }: PlannerPageProps) {
 
                 {activity.status === "planned" && (
                   <div className="mt-4 flex flex-wrap gap-2">
+                    {activity.activity_type === "strength" &&
+                      activity.template_id && (
+                        <form action={startWorkout}>
+                          <input
+                            type="hidden"
+                            name="templateId"
+                            value={activity.template_id}
+                          />
+                          <input
+                            type="hidden"
+                            name="plannedActivityId"
+                            value={activity.id}
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                          >
+                            Start workout
+                          </button>
+                        </form>
+                      )}
+
+                    {activity.activity_type === "run" && (
+                      <Link
+                        href={`/runs?plannedActivityId=${activity.id}`}
+                        className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400"
+                      >
+                        Log run
+                      </Link>
+                    )}
+
                     <form action={updatePlannedActivityStatus}>
                       <input
                         type="hidden"
