@@ -62,14 +62,23 @@ async function DashboardContent() {
             FitOS<span className="text-emerald-400">.</span>
           </Link>
 
-          <form action={logout}>
-            <button
-              type="submit"
-              className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-800"
+          <div className="flex items-center gap-4">
+            <Link
+              href="/workout-history"
+              className="text-sm text-emerald-400 hover:text-emerald-300"
             >
-              Sign out
-            </button>
-          </form>
+              Workout history →
+            </Link>
+
+            <form action={logout}>
+              <button
+                type="submit"
+                className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-800"
+              >
+                Sign out
+              </button>
+            </form>
+          </div>
         </header>
 
         <section className="py-12">
