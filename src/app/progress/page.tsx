@@ -46,18 +46,18 @@ function mondayOfWeek(date: Date) {
 function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) return \`\${hours}h \${minutes}m\`;
-  return \`\${minutes} min\`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes} min`;
 }
 
 function formatPace(distanceM: number, durationSeconds: number) {
   if (distanceM <= 0) return "—";
   const seconds = Math.round(durationSeconds / (distanceM / 1000));
-  return \`\${Math.floor(seconds / 60)}:\${String(seconds % 60).padStart(2, "0")} /km\`;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} /km`;
 }
 
 function formatDate(value: string) {
-  return new Date(\`\${value.slice(0, 10)}T12:00:00Z\`).toLocaleDateString("en-IN", {
+  return new Date(`${value.slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -66,18 +66,18 @@ function formatDate(value: string) {
 }
 
 function formatRange(start: string, end: string) {
-  const first = new Date(\`\${start}T12:00:00Z\`).toLocaleDateString("en-IN", {
+  const first = new Date(`${start}T12:00:00Z`).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     timeZone: "UTC",
   });
-  const last = new Date(\`\${end}T12:00:00Z\`).toLocaleDateString("en-IN", {
+  const last = new Date(`${end}T12:00:00Z`).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
     timeZone: "UTC",
   });
-  return \`\${first} – \${last}\`;
+  return `${first} – ${last}`;
 }
 
 export default function ProgressPage({ searchParams }: { searchParams: SearchParams }) {
@@ -127,8 +127,8 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
   const currentWeekStart = mondayOfWeek(new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())));
   const requestedWeek = params.week ?? isoDate(currentWeekStart);
   const isValidWeek = /^\d{4}-\d{2}-\d{2}$/.test(requestedWeek) &&
-    isoDate(mondayOfWeek(new Date(\`\${requestedWeek}T12:00:00Z\`))) === requestedWeek;
-  const weekStart = isValidWeek ? new Date(\`\${requestedWeek}T00:00:00Z\`) : currentWeekStart;
+    isoDate(mondayOfWeek(new Date(`${requestedWeek}T12:00:00Z`))) === requestedWeek;
+  const weekStart = isValidWeek ? new Date(`${requestedWeek}T00:00:00Z`) : currentWeekStart;
   const weekStartKey = isoDate(weekStart);
   const weekEnd = addDays(weekStart, 6);
   const weekEndKey = isoDate(weekEnd);
@@ -159,10 +159,10 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
   const weekOptions = Array.from({ length: 12 }, (_, index) => {
     const start = addDays(currentWeekStart, -7 * index);
     const end = addDays(start, 6);
-    return { start: isoDate(start), end: isoDate(end), label: \`Week of \${formatDate(isoDate(start))}\` };
+    return { start: isoDate(start), end: isoDate(end), label: `Week of ${formatDate(isoDate(start))}` };
   });
   if (!weekOptions.some((week) => week.start === weekStartKey)) {
-    weekOptions.push({ start: weekStartKey, end: weekEndKey, label: \`Week of \${formatDate(weekStartKey)}\` });
+    weekOptions.push({ start: weekStartKey, end: weekEndKey, label: `Week of ${formatDate(weekStartKey)}` });
     weekOptions.sort((a, b) => b.start.localeCompare(a.start));
   }
 
@@ -178,10 +178,10 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
     })),
     ...weeklyRuns.map((run) => ({
       id: run.id,
-      title: \`\${(run.distance_m / 1000).toFixed(2)} km run\`,
+      title: `${(run.distance_m / 1000).toFixed(2)} km run`,
       type: "Running",
       date: run.started_at,
-      detail: \`\${formatDuration(run.duration_seconds)} · \${formatPace(run.distance_m, run.duration_seconds)}\`,
+      detail: `${formatDuration(run.duration_seconds)} · ${formatPace(run.distance_m, run.duration_seconds)}`,
     })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -216,18 +216,18 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
             </form>
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Link href={\`/progress?week=\${previousWeekKey}\`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">← Previous week</Link>
-            <Link href={\`/progress?week=\${nextWeekKey}\`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">Next week →</Link>
+            <Link href={`/progress?week=${previousWeekKey}`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">← Previous week</Link>
+            <Link href={`/progress?week=${nextWeekKey}`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">Next week →</Link>
             <Link href="/progress" className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">This week</Link>
           </div>
         </section>
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: "Completed workouts", value: String(weeklyCompletedSessions.length), note: \`\${weeklySessions.filter((session) => session.status === "in_progress").length} in progress\` },
+            { label: "Completed workouts", value: String(weeklyCompletedSessions.length), note: `${weeklySessions.filter((session) => session.status === "in_progress").length} in progress` },
             { label: "Sets completed", value: String(weeklySets), note: "Across completed workouts" },
             { label: "Runs completed", value: String(weeklyRuns.length), note: "Logged running sessions" },
-            { label: "Running distance", value: \`\${(weeklyDistance / 1000).toFixed(2)} km\`, note: weeklyDistance > 0 ? \`Average pace \${formatPace(weeklyDistance, weeklyRunSeconds)}\` : "No distance logged this week" },
+            { label: "Running distance", value: `${(weeklyDistance / 1000).toFixed(2)} km`, note: weeklyDistance > 0 ? `Average pace ${formatPace(weeklyDistance, weeklyRunSeconds)}` : "No distance logged this week" },
           ].map((metric) => (
             <article key={metric.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
               <p className="text-sm text-slate-400">{metric.label}</p>
@@ -250,7 +250,7 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
           ) : (
             <div className="space-y-3">
               {activities.map((activity) => (
-                <article key={\`\${activity.type}-\${activity.id}\`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+                <article key={`${activity.type}-${activity.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
                   <div>
                     <p className="font-medium">{activity.title}</p>
                     <p className="mt-1 text-sm text-slate-400">{activity.type} · {formatDate(activity.date)}</p>
@@ -266,9 +266,9 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
           <h2 className="text-xl font-semibold">All-time overview</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { label: "Completed workouts", value: String(completedSessions.length), note: \`\${sessions.filter((session) => session.status === "in_progress").length} in progress\` },
+              { label: "Completed workouts", value: String(completedSessions.length), note: `${sessions.filter((session) => session.status === "in_progress").length} in progress` },
               { label: "Total runs", value: String(runs.length), note: "Logged running sessions" },
-              { label: "Distance covered", value: \`\${(totalDistance / 1000).toFixed(2)} km\`, note: "Across all logged runs" },
+              { label: "Distance covered", value: `${(totalDistance / 1000).toFixed(2)} km`, note: "Across all logged runs" },
               { label: "Average running pace", value: formatPace(totalDistance, totalRunSeconds), note: "Minutes per kilometre" },
             ].map((metric) => (
               <article key={metric.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
