@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 
 type Point = { label: string; value: number };
@@ -12,7 +14,7 @@ export function ChartCard({ title, subtitle, points, suffix = "" }: { title: str
     {!points.length ? <p className="py-10 text-center text-sm text-slate-500">Log more activity to see your trend.</p> : <>
       <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label={title} className="mt-4 h-auto w-full">
         {[0,.5,1].map((f)=><g key={f}><line x1={l} y1={t+ih*f} x2={w-r} y2={t+ih*f} stroke="#334155" strokeDasharray="3 4"/><text x={l-6} y={t+ih*f+4} fill="#94a3b8" fontSize="10" textAnchor="end">{Math.round(max*(1-f))}{suffix}</text></g>)}
-        {points.map((p,i)=>{const slot=iw/points.length,x=l+slot*i+slot/2,bh=p.value/max*ih;return <g key={p.label+i}><rect x={x-bw/2} y={t+ih-bh} width={bw} height={Math.max(2,bh)} rx="4" fill="#34d399" opacity={p.value===0?.25:.9}/><text x={x} y={h-8} fill="#94a3b8" fontSize="10" textAnchor="middle">{p.label}</text></g>})}
+        {points.map((p,i)=>{const slot=iw/points.length,x=l+slot*i+slot/2,bh=p.value/max*ih;return <g key={p.label+i}><rect x={x-bw/2} y={t+ih-bh} width={bw} height={Math.max(2,bh)} rx="4" fill="#34d399" opacity={p.value === 0 ? 0.25 : 0.9}/><text x={x} y={h-8} fill="#94a3b8" fontSize="10" textAnchor="middle">{p.label}</text></g>})}
       </svg><div className="flex justify-between text-xs text-slate-500"><span>{points[0].label}</span><span>Latest: {points[points.length-1].value.toFixed(1)}{suffix}</span></div>
     </>}
   </article>;
