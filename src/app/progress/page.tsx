@@ -20,34 +20,70 @@ type Run = {
   run_type: string;
 };
 
+type SearchParams = Promise<{ week?: string }>;
+
+function dateKey(value: string) {
+  return value.slice(0, 10);
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
+function isoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function mondayOfWeek(date: Date) {
+  const result = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = (result.getUTCDay() + 6) % 7;
+  result.setUTCDate(result.getUTCDate() - day);
+  return result;
+}
+
 function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes} min`;
+  if (hours > 0) return \`\${hours}h \${minutes}m\`;
+  return \`\${minutes} min\`;
 }
 
 function formatPace(distanceM: number, durationSeconds: number) {
   if (distanceM <= 0) return "—";
-
   const seconds = Math.round(durationSeconds / (distanceM / 1000));
-
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} /km`;
+  return \`\${Math.floor(seconds / 60)}:\${String(seconds % 60).padStart(2, "0")} /km\`;
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en-IN", {
+  return new Date(\`\${value.slice(0, 10)}T12:00:00Z\`).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
-export default function ProgressPage() {
+function formatRange(start: string, end: string) {
+  const first = new Date(\`\${start}T12:00:00Z\`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+  const last = new Date(\`\${end}T12:00:00Z\`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return \`\${first} – \${last}\`;
+}
+
+export default function ProgressPage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <Suspense fallback={<ProgressFallback />}>
-      <ProgressContent />
+      <ProgressContent searchParams={searchParams} />
     </Suspense>
   );
 }
@@ -56,268 +92,192 @@ function ProgressFallback() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 sm:px-6">
       <div className="mx-auto max-w-6xl space-y-8">
-        <header>
-          <Link
-            href="/dashboard"
-            className="text-sm text-slate-400 hover:text-white"
-          >
-            Dashboard
-          </Link>
-        </header>
+        <header><Link href="/dashboard" className="text-sm text-slate-400 hover:text-white">Dashboard</Link></header>
         <section aria-busy="true">
-          <p className="text-sm font-medium uppercase tracking-widest text-emerald-400">
-            Your training
-          </p>
+          <p className="text-sm font-medium uppercase tracking-widest text-emerald-400">Your training</p>
           <h1 className="mt-3 text-3xl font-bold sm:text-4xl">Progress</h1>
-          <p role="status" className="mt-2 text-slate-400">
-            Loading your training progress...
-          </p>
+          <p role="status" className="mt-2 text-slate-400">Loading your training progress...</p>
         </section>
       </div>
     </main>
   );
 }
 
-async function ProgressContent() {
+async function ProgressContent({ searchParams }: { searchParams: SearchParams }) {
   await connection();
-
+  const params = await searchParams;
   const supabase = await createClient();
   const { data: auth, error: authError } = await supabase.auth.getClaims();
   const userId = auth?.claims?.sub;
-
-  if (authError || typeof userId !== "string") {
-    redirect("/login");
-  }
+  if (authError || typeof userId !== "string") redirect("/login");
 
   const [sessionsResult, runsResult] = await Promise.all([
-    supabase
-      .from("workout_sessions")
-      .select("id, name, status, started_at, completed_at")
-      .eq("user_id", userId)
-      .order("started_at", { ascending: false }),
-    supabase
-      .from("runs")
-      .select("id, started_at, distance_m, duration_seconds, run_type")
-      .eq("user_id", userId)
-      .order("started_at", { ascending: false }),
+    supabase.from("workout_sessions").select("id, name, status, started_at, completed_at").eq("user_id", userId).order("started_at", { ascending: false }),
+    supabase.from("runs").select("id, started_at, distance_m, duration_seconds, run_type").eq("user_id", userId).order("started_at", { ascending: false }),
   ]);
 
   const sessions = (sessionsResult.data ?? []) as WorkoutSession[];
   const runs = (runsResult.data ?? []) as Run[];
+  const completedSessions = sessions.filter((session) => session.status === "completed");
+  const totalDistance = runs.reduce((sum, run) => sum + run.distance_m, 0);
+  const totalRunSeconds = runs.reduce((sum, run) => sum + run.duration_seconds, 0);
 
-  const completedSessions = sessions.filter(
-    (session) => session.status === "completed",
-  );
+  // Use ISO date keys for week grouping so records are consistently grouped by their logged calendar date.
+  const today = new Date();
+  const currentWeekStart = mondayOfWeek(new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())));
+  const requestedWeek = params.week ?? isoDate(currentWeekStart);
+  const isValidWeek = /^\d{4}-\d{2}-\d{2}$/.test(requestedWeek) &&
+    isoDate(mondayOfWeek(new Date(\`\${requestedWeek}T12:00:00Z\`))) === requestedWeek;
+  const weekStart = isValidWeek ? new Date(\`\${requestedWeek}T00:00:00Z\`) : currentWeekStart;
+  const weekStartKey = isoDate(weekStart);
+  const weekEnd = addDays(weekStart, 6);
+  const weekEndKey = isoDate(weekEnd);
+  const nextWeekKey = isoDate(addDays(weekStart, 7));
+  const previousWeekKey = isoDate(addDays(weekStart, -7));
+  const isCurrentWeek = weekStartKey === isoDate(currentWeekStart);
 
-  const totalDistance = runs.reduce(
-    (sum, run) => sum + run.distance_m,
-    0,
-  );
+  const isInSelectedWeek = (date: string) => {
+    const key = dateKey(date);
+    return key >= weekStartKey && key <= weekEndKey;
+  };
 
-  const totalRunSeconds = runs.reduce(
-    (sum, run) => sum + run.duration_seconds,
-    0,
-  );
+  const weeklySessions = sessions.filter((session) => isInSelectedWeek(session.started_at));
+  const weeklyCompletedSessions = weeklySessions.filter((session) => session.status === "completed");
+  const weeklyRuns = runs.filter((run) => isInSelectedWeek(run.started_at));
+  const weeklyDistance = weeklyRuns.reduce((sum, run) => sum + run.distance_m, 0);
+  const weeklyRunSeconds = weeklyRuns.reduce((sum, run) => sum + run.duration_seconds, 0);
+  const weeklySetCounts = await supabase
+    .from("session_exercises")
+    .select("id, session_id, workout_sets(id)")
+    .eq("user_id", userId)
+    .in("session_id", weeklyCompletedSessions.map((session) => session.id));
+  const weeklySets = (weeklySetCounts.data ?? []).reduce((sum, exercise) => {
+    const sets = (exercise.workout_sets as unknown as { id: string }[] | null) ?? [];
+    return sum + sets.length;
+  }, 0);
 
-  const now = new Date();
-  const weekStart = new Date(now);
-  weekStart.setHours(0, 0, 0, 0);
-  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
-
-  const weeklySessions = completedSessions.filter(
-    (session) => new Date(session.started_at) >= weekStart,
-  ).length;
-
-  const weeklyRuns = runs.filter(
-    (run) => new Date(run.started_at) >= weekStart,
-  );
-
-  const weeklyDistance = weeklyRuns.reduce(
-    (sum, run) => sum + run.distance_m,
-    0,
-  );
+  const weekOptions = Array.from({ length: 12 }, (_, index) => {
+    const start = addDays(currentWeekStart, -7 * index);
+    const end = addDays(start, 6);
+    return { start: isoDate(start), end: isoDate(end), label: \`Week of \${formatDate(isoDate(start))}\` };
+  });
+  if (!weekOptions.some((week) => week.start === weekStartKey)) {
+    weekOptions.push({ start: weekStartKey, end: weekEndKey, label: \`Week of \${formatDate(weekStartKey)}\` });
+    weekOptions.sort((a, b) => b.start.localeCompare(a.start));
+  }
 
   const activities = [
-    ...completedSessions.map((session) => ({
+    ...weeklySessions.map((session) => ({
       id: session.id,
       title: session.name,
       type: "Strength",
       date: session.started_at,
-      detail: session.completed_at
-        ? formatDuration(
-            Math.max(
-              0,
-              Math.floor(
-                (new Date(session.completed_at).getTime() -
-                  new Date(session.started_at).getTime()) /
-                  1000,
-              ),
-            ),
-          )
-        : "Completed workout",
+      detail: session.status === "completed" && session.completed_at
+        ? formatDuration(Math.max(0, Math.floor((new Date(session.completed_at).getTime() - new Date(session.started_at).getTime()) / 1000)))
+        : session.status.replace("_", " "),
     })),
-    ...runs.map((run) => ({
+    ...weeklyRuns.map((run) => ({
       id: run.id,
-      title: `${(run.distance_m / 1000).toFixed(2)} km run`,
+      title: \`\${(run.distance_m / 1000).toFixed(2)} km run\`,
       type: "Running",
       date: run.started_at,
-      detail: `${formatDuration(run.duration_seconds)} · ${formatPace(
-        run.distance_m,
-        run.duration_seconds,
-      )}`,
+      detail: \`\${formatDuration(run.duration_seconds)} · \${formatPace(run.distance_m, run.duration_seconds)}\`,
     })),
-  ]
-    .sort((first, second) => new Date(second.date).getTime() - new Date(first.date).getTime())
-    .slice(0, 8);
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 sm:px-6">
       <div className="mx-auto max-w-6xl space-y-8">
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-6">
           <div>
-            <Link
-              href="/dashboard"
-              className="text-sm text-slate-400 hover:text-white"
-            >
-              ← Dashboard
-            </Link>
+            <Link href="/dashboard" className="text-sm text-slate-400 hover:text-white">← Dashboard</Link>
             <h1 className="mt-3 text-3xl font-bold sm:text-4xl">Progress</h1>
-            <p className="mt-2 text-slate-400">
-              Your training, running, and consistency at a glance.
-            </p>
+            <p className="mt-2 text-slate-400">Review training by week or switch to your all-time totals.</p>
           </div>
-
-          <nav className="flex gap-3 text-sm">
-            <Link
-              href="/workout-history"
-              className="rounded-lg border border-slate-700 px-4 py-2 hover:bg-slate-900"
-            >
-              Workout history
-            </Link>
-            <Link
-              href="/runs"
-              className="rounded-lg bg-emerald-400 px-4 py-2 font-semibold text-slate-950 hover:bg-emerald-300"
-            >
-              Log a run
-            </Link>
+          <nav className="flex flex-wrap gap-3 text-sm">
+            <Link href="/workout-history" className="rounded-lg border border-slate-700 px-4 py-2 hover:bg-slate-900">Workout history</Link>
+            <Link href="/runs" className="rounded-lg bg-emerald-400 px-4 py-2 font-semibold text-slate-950 hover:bg-emerald-300">Log a run</Link>
           </nav>
         </header>
 
-        <section>
-          <h2 className="mb-4 text-lg font-semibold">All-time overview</h2>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium uppercase tracking-wider text-emerald-400">Weekly view</p>
+              <h2 className="mt-1 text-2xl font-semibold">{formatRange(weekStartKey, weekEndKey)}</h2>
+              <p className="mt-1 text-sm text-slate-400">{isCurrentWeek ? "Current week · Monday to Sunday" : "Selected week · Monday to Sunday"}</p>
+            </div>
+            <form action="/progress" method="get" className="flex flex-wrap items-center gap-2">
+              <label htmlFor="week" className="sr-only">Select week</label>
+              <select id="week" name="week" defaultValue={weekStartKey} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100">
+                {weekOptions.map((week) => <option key={week.start} value={week.start}>{week.label}</option>)}
+              </select>
+              <button type="submit" className="rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300">View week</button>
+            </form>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link href={\`/progress?week=\${previousWeekKey}\`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">← Previous week</Link>
+            <Link href={\`/progress?week=\${nextWeekKey}\`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">Next week →</Link>
+            <Link href="/progress" className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">This week</Link>
+          </div>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: "Completed workouts", value: String(weeklyCompletedSessions.length), note: \`\${weeklySessions.filter((session) => session.status === "in_progress").length} in progress\` },
+            { label: "Sets completed", value: String(weeklySets), note: "Across completed workouts" },
+            { label: "Runs completed", value: String(weeklyRuns.length), note: "Logged running sessions" },
+            { label: "Running distance", value: \`\${(weeklyDistance / 1000).toFixed(2)} km\`, note: weeklyDistance > 0 ? \`Average pace \${formatPace(weeklyDistance, weeklyRunSeconds)}\` : "No distance logged this week" },
+          ].map((metric) => (
+            <article key={metric.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+              <p className="text-sm text-slate-400">{metric.label}</p>
+              <p className="mt-3 text-2xl font-bold">{metric.value}</p>
+              <p className="mt-2 text-xs text-slate-500">{metric.note}</p>
+            </article>
+          ))}
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">Activity for this week</h2>
+            <span className="text-sm text-slate-400">{activities.length} activities</span>
+          </div>
+          {activities.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900 p-8 text-center">
+              <p className="font-medium">No activity logged for this week</p>
+              <p className="mt-2 text-sm text-slate-400">Choose another week above or log a workout or run to start tracking.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activities.map((activity) => (
+                <article key={\`\${activity.type}-\${activity.id}\`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+                  <div>
+                    <p className="font-medium">{activity.title}</p>
+                    <p className="mt-1 text-sm text-slate-400">{activity.type} · {formatDate(activity.date)}</p>
+                  </div>
+                  <p className="text-sm capitalize text-slate-300">{activity.detail}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold">All-time overview</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              {
-                label: "Completed workouts",
-                value: completedSessions.length.toString(),
-                note: `${sessions.filter((session) => session.status === "in_progress").length} in progress`,
-              },
-              {
-                label: "Total runs",
-                value: runs.length.toString(),
-                note: "Logged running sessions",
-              },
-              {
-                label: "Distance covered",
-                value: `${(totalDistance / 1000).toFixed(2)} km`,
-                note: "Across all logged runs",
-              },
-              {
-                label: "Average running pace",
-                value: formatPace(totalDistance, totalRunSeconds),
-                note: "Minutes per kilometre",
-              },
+              { label: "Completed workouts", value: String(completedSessions.length), note: \`\${sessions.filter((session) => session.status === "in_progress").length} in progress\` },
+              { label: "Total runs", value: String(runs.length), note: "Logged running sessions" },
+              { label: "Distance covered", value: \`\${(totalDistance / 1000).toFixed(2)} km\`, note: "Across all logged runs" },
+              { label: "Average running pace", value: formatPace(totalDistance, totalRunSeconds), note: "Minutes per kilometre" },
             ].map((metric) => (
-              <article
-                key={metric.label}
-                className="rounded-xl border border-slate-800 bg-slate-900 p-5"
-              >
+              <article key={metric.label} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
                 <p className="text-sm text-slate-400">{metric.label}</p>
                 <p className="mt-3 text-2xl font-bold">{metric.value}</p>
                 <p className="mt-2 text-xs text-slate-500">{metric.note}</p>
               </article>
             ))}
           </div>
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-2">
-          <article className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-            <p className="text-sm font-medium uppercase tracking-wider text-emerald-400">
-              This week
-            </p>
-            <h2 className="mt-2 text-xl font-semibold">Training consistency</h2>
-            <div className="mt-6 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-slate-400">Completed workouts</p>
-                <p className="mt-2 text-3xl font-bold">{weeklySessions}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-400">Running distance</p>
-                <p className="mt-2 text-3xl font-bold">
-                  {(weeklyDistance / 1000).toFixed(2)} km
-                </p>
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-xl border border-slate-800 bg-slate-900 p-6">
-            <p className="text-sm font-medium uppercase tracking-wider text-emerald-400">
-              Your training
-            </p>
-            <h2 className="mt-2 text-xl font-semibold">Quick actions</h2>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Link
-                href="/workout-templates"
-                className="rounded-lg border border-slate-700 px-4 py-3 text-sm hover:bg-slate-800"
-              >
-                Start strength workout
-              </Link>
-              <Link
-                href="/planner"
-                className="rounded-lg border border-slate-700 px-4 py-3 text-sm hover:bg-slate-800"
-              >
-                View training planner
-              </Link>
-            </div>
-          </article>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Recent activity</h2>
-            <Link
-              href="/workout-history"
-              className="text-sm text-emerald-400 hover:text-emerald-300"
-            >
-              All workouts →
-            </Link>
-          </div>
-
-          {activities.length === 0 ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
-              <p className="font-medium">Your progress starts here</p>
-              <p className="mt-2 text-sm text-slate-400">
-                Complete a workout or log a run to see activity here.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {activities.map((activity) => (
-                <article
-                  key={`${activity.type}-${activity.id}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4"
-                >
-                  <div>
-                    <p className="font-medium">{activity.title}</p>
-                    <p className="mt-1 text-sm text-slate-400">
-                      {activity.type} · {formatDate(activity.date)}
-                    </p>
-                  </div>
-                  <p className="text-sm text-slate-300">{activity.detail}</p>
-                </article>
-              ))}
-            </div>
-          )}
         </section>
       </div>
     </main>
