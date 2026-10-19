@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { ChartCard, ExerciseProgressChart } from "@/components/ProgressCharts";
 
 type WorkoutSession = {
   id: string;
@@ -156,6 +157,82 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
     return sum + sets.length;
   }, 0);
 
+  const exerciseDetailsResult = await supabase
+    .from("session_exercises")
+    .select("id, session_id, exercise_name, workout_sets(id, reps, weight_kg)")
+    .eq("user_id", userId);
+
+  type SetDetail = { id: string; reps: number | null; weight_kg: number | null };
+  type ExerciseDetail = { id: string; session_id: string; exercise_name: string; workout_sets: SetDetail[] | null };
+  const exerciseDetails = (exerciseDetailsResult.data ?? []) as unknown as ExerciseDetail[];
+  const completedSessionIds = new Set(completedSessions.map((session) => session.id));
+  const sessionDateById = new Map(completedSessions.map((session) => [session.id, dateKey(session.started_at)]));
+  const weeklyVolumeByStart = new Map<string, number>();
+  const weeklyWorkoutsByStart = new Map<string, number>();
+  const weeklyRunDistanceByStart = new Map<string, number>();
+  const weekStarts = Array.from({ length: 8 }, (_, index) => isoDate(addDays(currentWeekStart, -7 * (7 - index))));
+  for (const start of weekStarts) {
+    weeklyVolumeByStart.set(start, 0);
+    weeklyWorkoutsByStart.set(start, 0);
+    weeklyRunDistanceByStart.set(start, 0);
+  }
+  for (const session of completedSessions) {
+    const start = isoDate(mondayOfWeek(new Date(`${dateKey(session.started_at)}T12:00:00Z`)));
+    if (weeklyWorkoutsByStart.has(start)) weeklyWorkoutsByStart.set(start, (weeklyWorkoutsByStart.get(start) ?? 0) + 1);
+  }
+  const exerciseRowsById = new Map(exerciseDetails.map((exercise) => [exercise.id, exercise]));
+  for (const exercise of exerciseDetails) {
+    if (!completedSessionIds.has(exercise.session_id)) continue;
+    const sessionDate = sessionDateById.get(exercise.session_id);
+    if (!sessionDate) continue;
+    const start = isoDate(mondayOfWeek(new Date(`${sessionDate}T12:00:00Z`)));
+    if (!weeklyVolumeByStart.has(start)) continue;
+    const volume = (exercise.workout_sets ?? []).reduce((sum, set) => {
+      const weight = Number(set.weight_kg ?? 0);
+      const reps = Number(set.reps ?? 0);
+      return sum + (Number.isFinite(weight) && Number.isFinite(reps) ? weight * reps : 0);
+    }, 0);
+    weeklyVolumeByStart.set(start, (weeklyVolumeByStart.get(start) ?? 0) + volume);
+  }
+  for (const run of runs) {
+    const start = isoDate(mondayOfWeek(new Date(`${dateKey(run.started_at)}T12:00:00Z`)));
+    if (weeklyRunDistanceByStart.has(start)) weeklyRunDistanceByStart.set(start, (weeklyRunDistanceByStart.get(start) ?? 0) + run.distance_m / 1000);
+  }
+  const weeklyLabels = weekStarts.map((start) => new Date(`${start}T12:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" }));
+  const workoutTrendPoints = weekStarts.map((start, index) => ({ label: weeklyLabels[index], value: weeklyWorkoutsByStart.get(start) ?? 0 }));
+  const volumeTrendPoints = weekStarts.map((start, index) => ({ label: weeklyLabels[index], value: Math.round(weeklyVolumeByStart.get(start) ?? 0) }));
+  const runTrendPoints = weekStarts.map((start, index) => ({ label: weeklyLabels[index], value: Number((weeklyRunDistanceByStart.get(start) ?? 0).toFixed(1)) }));
+
+  const strengthByExercise = new Map<string, Map<string, number>>();
+  for (const exercise of exerciseDetails) {
+    if (!completedSessionIds.has(exercise.session_id)) continue;
+    const sessionDate = sessionDateById.get(exercise.session_id);
+    if (!sessionDate) continue;
+    const start = isoDate(mondayOfWeek(new Date(`${sessionDate}T12:00:00Z`)));
+    if (!weekStarts.includes(start)) continue;
+    for (const set of exercise.workout_sets ?? []) {
+      const weight = Number(set.weight_kg ?? 0);
+      if (!Number.isFinite(weight) || weight <= 0) continue;
+      if (!strengthByExercise.has(exercise.exercise_name)) strengthByExercise.set(exercise.exercise_name, new Map());
+      const weeklyBest = strengthByExercise.get(exercise.exercise_name)!;
+      weeklyBest.set(start, Math.max(weeklyBest.get(start) ?? 0, weight));
+    }
+  }
+  const strengthTrends = [...strengthByExercise.entries()]
+    .map(([name, values]) => ({
+      name,
+      points: weekStarts.map((start, index) => ({ label: weeklyLabels[index], value: values.get(start) ?? 0 })),
+      latest: Math.max(...values.values()),
+    }))
+    .sort((a, b) => b.latest - a.latest)
+    .slice(0, 12)
+    .map(({ name, points }) => ({ name, points }));
+
+  const personalRecords = [...strengthByExercise.entries()]
+    .map(([name, values]) => ({ name, weight: Math.max(...values.values()) }))
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 5);
+
   const weekOptions = Array.from({ length: 12 }, (_, index) => {
     const start = addDays(currentWeekStart, -7 * index);
     const end = addDays(start, 6);
@@ -235,6 +312,41 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
               <p className="mt-2 text-xs text-slate-500">{metric.note}</p>
             </article>
           ))}
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold">Training trends</h2>
+            <p className="mt-1 text-sm text-slate-400">Last 8 weeks · use these charts to spot consistency and progression.</p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChartCard title="Workouts per week" subtitle="Completed strength sessions" points={workoutTrendPoints} />
+            <ChartCard title="Running distance" subtitle="Kilometres completed each week" points={runTrendPoints} suffix=" km" />
+            <div className="lg:col-span-2">
+              <ChartCard title="Strength training volume" subtitle="Estimated workload: sum of weight × reps across completed sets (kg-reps)" points={volumeTrendPoints} suffix="" />
+            </div>
+          </div>
+          <ExerciseProgressChart trends={strengthTrends} />
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">Personal bests</h2>
+            <span className="text-sm text-slate-400">Highest recorded weight per exercise</span>
+          </div>
+          {personalRecords.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900 p-6 text-sm text-slate-400">Record completed workouts with working weights to build your personal-best list.</div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {personalRecords.map((record) => (
+                <article key={record.name} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+                  <p className="text-sm text-slate-400">{record.name}</p>
+                  <p className="mt-2 text-2xl font-bold text-emerald-300">{record.weight} kg</p>
+                  <p className="mt-1 text-xs text-slate-500">Best recorded set weight</p>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="space-y-4">
