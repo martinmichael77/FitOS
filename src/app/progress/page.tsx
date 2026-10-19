@@ -180,7 +180,6 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
     const start = isoDate(mondayOfWeek(new Date(`${dateKey(session.started_at)}T12:00:00Z`)));
     if (weeklyWorkoutsByStart.has(start)) weeklyWorkoutsByStart.set(start, (weeklyWorkoutsByStart.get(start) ?? 0) + 1);
   }
-  const exerciseRowsById = new Map(exerciseDetails.map((exercise) => [exercise.id, exercise]));
   for (const exercise of exerciseDetails) {
     if (!completedSessionIds.has(exercise.session_id)) continue;
     const sessionDate = sessionDateById.get(exercise.session_id);
@@ -332,7 +331,7 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-semibold">Personal bests</h2>
-            <span className="text-sm text-slate-400">Highest recorded weight per exercise</span>
+            <span className="text-sm text-slate-400">Highest recorded weight · last 8 weeks</span>
           </div>
           {personalRecords.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900 p-6 text-sm text-slate-400">Record completed workouts with working weights to build your personal-best list.</div>
@@ -342,7 +341,7 @@ async function ProgressContent({ searchParams }: { searchParams: SearchParams })
                 <article key={record.name} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
                   <p className="text-sm text-slate-400">{record.name}</p>
                   <p className="mt-2 text-2xl font-bold text-emerald-300">{record.weight} kg</p>
-                  <p className="mt-1 text-xs text-slate-500">Best recorded set weight</p>
+                  <p className="mt-1 text-xs text-slate-500">Best recorded set weight in this chart period</p>
                 </article>
               ))}
             </div>
